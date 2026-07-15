@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Result Management — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  @media print { .no-print, .sidebar, .topbar{ display:none !important; } .page{ padding:0; } }
+  .subject-row{ display:grid; grid-template-columns: 2fr 1fr 1fr auto; gap:10px; align-items:center; margin-bottom:10px; }
+  #resultCard{ display:none; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card no-print" style="background:var(--danger-bg);border:1px solid #F2C6C6;box-shadow:none;">
+        <p style="color:var(--danger);margin:0;"><strong>Admin-only view</strong> — no student/parent login exists on this site.</p>
+      </div>
+
+      <div class="card no-print">
+        <div class="card-head"><h3>Select Student &amp; Class</h3></div>
+        <div class="form-grid" style="grid-template-columns:1fr auto;">
+          <input type="text" id="searchInput" placeholder="Search by Student No or Name…" style="padding:12px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;">
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px;">
+          <table>
+            <thead><tr><th>Student No</th><th>Name</th><th>Class</th><th></th></tr></thead>
+            <tbody id="resultsBody"><tr class="empty-row"><td colspan="4">Search to select a student.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card no-print" id="marksCard" style="display:none;">
+        <div class="card-head"><h3 id="marksTitle">Enter Subject-wise Marks</h3></div>
+        <div class="field"><label>Exam / Term</label><input type="text" id="examTerm" placeholder="e.g. Mid Term 2026" required></div>
+        <div id="subjectsWrap"></div>
+        <button type="button" class="btn btn-outline btn-sm" id="addSubjectBtn">+ Add Subject</button>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" id="calcBtn">Calculate Grade / % &amp; Generate Result Card</button>
+        </div>
+      </div>
+
+      <div id="resultCard">
+        <div class="card no-print" style="margin-bottom:10px;">
+          <button class="btn btn-primary" onclick="window.print()">Print Result Card</button>
+        </div>
+        <div class="card" style="max-width:520px;margin:0 auto;">
+          <div style="text-align:center;border-bottom:2px dashed var(--border);padding-bottom:14px;margin-bottom:14px;">
+            <h2 style="margin-bottom:2px;">Haseeb School</h2>
+            <p style="margin:0;">Result Card</p>
+          </div>
+          <div class="form-grid" style="margin-bottom:14px;">
+            <div><strong id="rcName"></strong><br><span style="font-size:12px;color:var(--ink-muted);" id="rcMeta"></span></div>
+            <div style="text-align:right;"><span class="badge badge-neutral" id="rcTerm"></span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Subject</th><th>Marks</th><th>Total</th></tr></thead>
+              <tbody id="rcSubjects"></tbody>
+            </table>
+          </div>
+          <div class="stat-row" style="margin-top:16px;grid-template-columns:1fr 1fr 1fr;">
+            <div class="stat-card"><div class="label">Obtained</div><div class="value" id="rcObtained"></div></div>
+            <div class="stat-card"><div class="label">Percentage</div><div class="value" id="rcPercent"></div></div>
+            <div class="stat-card" id="rcGradeCard"><div class="label">Grade</div><div class="value" id="rcGrade"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, showToast } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { searchStudents, addResult, computeGrade } from './js/data.js';
+
+  renderShell({ title: 'Result Management', breadcrumb: 'Module 8 — Marks, grade calculation, result card' });
+  await requireAuth();
+
+  const resultsBody = document.getElementById('resultsBody');
+  const marksCard = document.getElementById('marksCard');
+  const subjectsWrap = document.getElementById('subjectsWrap');
+  let selected = null;
+  let subjectCount = 0;
+
+  function addSubjectRow(name = ''){
+    subjectCount++;
+    const id = 'subj' + subjectCount;
+    const row = document.createElement('div');
+    row.className = 'subject-row';
+    row.dataset.id = id;
+    row.innerHTML = `
+      <input type="text" placeholder="Subject name" class="subj-name" value="${name}">
+      <input type="number" placeholder="Marks obtained" class="subj-marks" min="0">
+      <input type="number" placeholder="Total marks" class="subj-total" min="0" value="100">
+      <button type="button" class="btn btn-outline btn-sm remove-subj">✕</button>
+    `;
+    row.querySelector('.remove-subj').addEventListener('click', () => row.remove());
+    subjectsWrap.appendChild(row);
+  }
+
+  document.getElementById('addSubjectBtn').addEventListener('click', () => addSubjectRow());
+
+  async function runSearch(){
+    const term = document.getElementById('searchInput').value;
+    resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">Searching…</td></tr>';
+    const rows = await searchStudents(term);
+    if (rows.length === 0){
+      resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">No students found.</td></tr>';
+      return;
+    }
+    resultsBody.innerHTML = rows.map(s => `
+      <tr>
+        <td>${s.studentNo || '—'}</td><td>${s.name || '—'}</td><td>${s.className || '—'} ${s.section || ''}</td>
+        <td><button class="btn btn-outline btn-sm" data-select="${s.id}">Select</button></td>
+      </tr>
+    `).join('');
+    resultsBody.querySelectorAll('[data-select]').forEach(btn => {
+      btn.addEventListener('click', () => selectStudent(rows.find(r => r.id === btn.dataset.select)));
+    });
+  }
+
+  function selectStudent(s){
+    selected = s;
+    marksCard.style.display = 'block';
+    document.getElementById('marksTitle').textContent = `Enter Marks — ${s.name} (${s.studentNo})`;
+    subjectsWrap.innerHTML = '';
+    ['English','Urdu','Mathematics','Science'].forEach(addSubjectRow);
+    marksCard.scrollIntoView({ behavior:'smooth' });
+  }
+
+  document.getElementById('calcBtn').addEventListener('click', async () => {
+    if (!selected) return;
+    const examTerm = document.getElementById('examTerm').value.trim();
+    if (!examTerm){ showToast('Enter an exam / term name.', 'error'); return; }
+
+    const subjects = Array.from(subjectsWrap.querySelectorAll('.subject-row')).map(row => ({
+      name: row.querySelector('.subj-name').value.trim() || 'Subject',
+      marks: Number(row.querySelector('.subj-marks').value || 0),
+      total: Number(row.querySelector('.subj-total').value || 0)
+    })).filter(s => s.total > 0);
+
+    if (subjects.length === 0){ showToast('Add at least one subject.', 'error'); return; }
+
+    const totalMarks = subjects.reduce((s,x) => s + x.total, 0);
+    const obtainedMarks = subjects.reduce((s,x) => s + x.marks, 0);
+    const percentage = totalMarks ? Math.round((obtainedMarks / totalMarks) * 1000) / 10 : 0;
+    const grade = computeGrade(percentage);
+
+    const calcBtn = document.getElementById('calcBtn');
+    calcBtn.disabled = true; calcBtn.textContent = 'Saving…';
+    try {
+      await addResult({
+        studentId: selected.id, studentNo: selected.studentNo, studentName: selected.name,
+        classId: selected.classId || null, className: selected.className || '',
+        examTerm, subjects, totalMarks, obtainedMarks, percentage, grade
+      });
+      showToast('Result saved to database.', 'success');
+
+      document.getElementById('rcName').textContent = selected.name;
+      document.getElementById('rcMeta').textContent = `${selected.studentNo} · ${selected.className || ''} ${selected.section || ''}`;
+      document.getElementById('rcTerm').textContent = examTerm;
+      document.getElementById('rcSubjects').innerHTML = subjects.map(s => `<tr><td>${s.name}</td><td>${s.marks}</td><td>${s.total}</td></tr>`).join('');
+      document.getElementById('rcObtained').textContent = `${obtainedMarks} / ${totalMarks}`;
+      document.getElementById('rcPercent').textContent = `${percentage}%`;
+      const gradeCard = document.getElementById('rcGradeCard');
+      gradeCard.className = 'stat-card ' + (grade === 'Fail' ? 'danger' : 'success');
+      document.getElementById('rcGrade').textContent = grade;
+
+      marksCard.style.display = 'none';
+      document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('resultCard').scrollIntoView({ behavior:'smooth' });
+    } catch(err){
+      console.error(err);
+      showToast('Could not save result. ' + err.message, 'error');
+    } finally {
+      calcBtn.disabled = false; calcBtn.textContent = 'Calculate Grade / % & Generate Result Card';
+    }
+  });
+
+  document.getElementById('searchBtn').addEventListener('click', runSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+  runSearch();
+</script>
+</body>
+</html>

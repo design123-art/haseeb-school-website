@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Student — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card">
+        <div class="card-head"><h3>Search Student</h3></div>
+        <div class="form-grid" style="grid-template-columns:1fr auto;">
+          <input type="text" id="searchInput" placeholder="Search by Student No, Name, or Class…" style="padding:12px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;">
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px;">
+          <table>
+            <thead><tr><th>Student No</th><th>Name</th><th>Class</th><th>Father</th><th></th></tr></thead>
+            <tbody id="resultsBody"><tr class="empty-row"><td colspan="5">Search to find a student to edit.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="editCard" style="display:none;">
+        <div class="card-head"><h3>Update Student Information</h3></div>
+        <form id="editForm">
+          <div class="form-grid">
+            <div class="field"><label>Student No</label><input type="text" id="studentNo" disabled></div>
+            <div class="field"><label>Full Name</label><input type="text" id="name" required></div>
+            <div class="field"><label>Father's Name</label><input type="text" id="father" required></div>
+            <div class="field"><label>B-Form / CNIC No.</label><input type="text" id="bForm"></div>
+            <div class="field"><label>Phone</label><input type="tel" id="phone"></div>
+            <div class="field"><label>Emergency Contact</label><input type="tel" id="emergencyPhone"></div>
+            <div class="field" style="grid-column:1/-1;"><label>Address</label><input type="text" id="address"></div>
+            <div class="field">
+              <label>Class</label>
+              <select id="classSelect"><option value="">Select class…</option></select>
+            </div>
+            <div class="field"><label>Section</label><input type="text" id="section"></div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="saveBtn">Save Changes to Database</button>
+            <button type="button" class="btn btn-outline" id="cancelBtn">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, showToast } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { searchStudents, updateStudent, getAllClasses } from './js/data.js';
+
+  renderShell({ title: 'Edit Student', breadcrumb: 'Module 2 — Search, update, and save changes' });
+  await requireAuth();
+
+  const resultsBody = document.getElementById('resultsBody');
+  const editCard = document.getElementById('editCard');
+  const classSelect = document.getElementById('classSelect');
+  let classes = [];
+  let currentId = null;
+
+  try {
+    classes = await getAllClasses();
+    classes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.className}${c.section ? ' - ' + c.section : ''}`;
+      classSelect.appendChild(opt);
+    });
+  } catch(e){ console.error(e); }
+
+  async function runSearch(){
+    const term = document.getElementById('searchInput').value;
+    resultsBody.innerHTML = '<tr class="empty-row"><td colspan="5">Searching…</td></tr>';
+    try {
+      const rows = await searchStudents(term);
+      if (rows.length === 0){
+        resultsBody.innerHTML = '<tr class="empty-row"><td colspan="5">No students found.</td></tr>';
+        return;
+      }
+      resultsBody.innerHTML = rows.map(s => `
+        <tr>
+          <td>${s.studentNo || '—'}</td>
+          <td>${s.name || '—'}</td>
+          <td>${s.className || '—'} ${s.section || ''}</td>
+          <td>${s.father || '—'}</td>
+          <td><button class="btn btn-outline btn-sm" data-edit="${s.id}">Edit</button></td>
+        </tr>
+      `).join('');
+      resultsBody.querySelectorAll('[data-edit]').forEach(btn => {
+        btn.addEventListener('click', () => openEdit(rows.find(r => r.id === btn.dataset.edit)));
+      });
+    } catch(e){
+      console.error(e);
+      resultsBody.innerHTML = '<tr class="empty-row"><td colspan="5">Error loading students.</td></tr>';
+    }
+  }
+
+  function openEdit(s){
+    currentId = s.id;
+    document.getElementById('studentNo').value = s.studentNo || '';
+    document.getElementById('name').value = s.name || '';
+    document.getElementById('father').value = s.father || '';
+    document.getElementById('bForm').value = s.bForm || '';
+    document.getElementById('phone').value = s.phone || '';
+    document.getElementById('emergencyPhone').value = s.emergencyPhone || '';
+    document.getElementById('address').value = s.address || '';
+    classSelect.value = s.classId || '';
+    document.getElementById('section').value = s.section || '';
+    editCard.style.display = 'block';
+    editCard.scrollIntoView({ behavior:'smooth' });
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', runSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+  document.getElementById('cancelBtn').addEventListener('click', () => { editCard.style.display = 'none'; currentId = null; });
+  runSearch();
+
+  document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentId) return;
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    const cls = classes.find(c => c.id === classSelect.value);
+    try {
+      await updateStudent(currentId, {
+        name: document.getElementById('name').value.trim(),
+        father: document.getElementById('father').value.trim(),
+        bForm: document.getElementById('bForm').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        emergencyPhone: document.getElementById('emergencyPhone').value.trim(),
+        address: document.getElementById('address').value.trim(),
+        classId: classSelect.value || null,
+        className: cls ? cls.className : '',
+        section: document.getElementById('section').value.trim(),
+        monthlyFee: cls ? Number(cls.monthlyFee || 0) : 0,
+        annualFee: cls ? Number(cls.annualFee || 0) : 0
+      });
+      showToast('Changes saved to database.', 'success');
+      editCard.style.display = 'none';
+      runSearch();
+    } catch(err){
+      console.error(err);
+      showToast('Could not save changes. ' + err.message, 'error');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = 'Save Changes to Database';
+    }
+  });
+</script>
+</body>
+</html>

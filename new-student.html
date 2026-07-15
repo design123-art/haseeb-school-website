@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Student — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card">
+        <div class="card-head"><h3>Enter Student Information</h3></div>
+        <form id="studentForm">
+          <div class="form-grid">
+            <div class="field"><label>Student No</label><input type="text" id="studentNo" required></div>
+            <div class="field"><label>Full Name</label><input type="text" id="name" required></div>
+            <div class="field"><label>Father's Name</label><input type="text" id="father" required></div>
+            <div class="field"><label>B-Form / CNIC No.</label><input type="text" id="bForm"></div>
+            <div class="field"><label>Phone</label><input type="tel" id="phone"></div>
+            <div class="field"><label>Emergency Contact</label><input type="tel" id="emergencyPhone"></div>
+            <div class="field" style="grid-column: 1/-1;"><label>Address</label><input type="text" id="address"></div>
+            <div class="field"><label>School / Campus</label><input type="text" id="school" value="Haseeb School"></div>
+            <div class="field">
+              <label>Class</label>
+              <select id="classSelect" required><option value="">Select class…</option></select>
+            </div>
+            <div class="field"><label>Section</label><input type="text" id="section" placeholder="e.g. A"></div>
+          </div>
+
+          <div class="card" style="background:var(--gold-light);border:1px solid #EBD9AF;margin-top:20px;box-shadow:none;">
+            <div class="card-head" style="margin-bottom:8px;"><h4 style="margin:0;color:var(--gold);">Collect Admission Fee</h4></div>
+            <p style="margin-bottom:14px;">One-time fee, charged only at enrollment.</p>
+            <div class="form-grid">
+              <div class="field"><label>Admission Fee Amount</label><input type="number" id="admissionFee" min="0" value="0"></div>
+              <div class="field"><label>Amount Received Now</label><input type="number" id="admissionFeePaidAmount" min="0" value="0"></div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="saveBtn">Save Data to Database</button>
+            <button type="reset" class="btn btn-outline">Clear Form</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, showToast } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { addStudent, getAllClasses, suggestStudentNo } from './js/data.js';
+
+  renderShell({ title: 'New Student', breadcrumb: 'Module 1 — Enroll a student and save to the database' });
+  await requireAuth();
+
+  document.getElementById('studentNo').value = suggestStudentNo();
+
+  const classSelect = document.getElementById('classSelect');
+  let classes = [];
+  try {
+    classes = await getAllClasses();
+    classes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.className}${c.section ? ' - ' + c.section : ''}`;
+      classSelect.appendChild(opt);
+    });
+    if (classes.length === 0){
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = 'No classes yet — add one in Class Management';
+      classSelect.appendChild(opt);
+    }
+  } catch(e){ console.error(e); }
+
+  document.getElementById('studentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+    const cls = classes.find(c => c.id === classSelect.value);
+    const payload = {
+      studentNo: document.getElementById('studentNo').value.trim(),
+      name: document.getElementById('name').value.trim(),
+      father: document.getElementById('father').value.trim(),
+      bForm: document.getElementById('bForm').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+      emergencyPhone: document.getElementById('emergencyPhone').value.trim(),
+      address: document.getElementById('address').value.trim(),
+      school: document.getElementById('school').value.trim(),
+      classId: classSelect.value || null,
+      className: cls ? cls.className : '',
+      section: document.getElementById('section').value.trim(),
+      admissionFee: Number(document.getElementById('admissionFee').value || 0),
+      admissionFeePaidAmount: Number(document.getElementById('admissionFeePaidAmount').value || 0),
+      monthlyFee: cls ? Number(cls.monthlyFee || 0) : 0,
+      annualFee: cls ? Number(cls.annualFee || 0) : 0
+    };
+
+    try {
+      await addStudent(payload);
+      showToast('Student saved to database.', 'success');
+      document.getElementById('studentForm').reset();
+      document.getElementById('studentNo').value = suggestStudentNo();
+      document.getElementById('school').value = 'Haseeb School';
+    } catch (err) {
+      console.error(err);
+      showToast('Could not save student. ' + err.message, 'error');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = 'Save Data to Database';
+    }
+  });
+</script>
+</body>
+</html>

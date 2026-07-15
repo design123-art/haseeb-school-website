@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="stat-row" id="statRow">
+        <div class="stat-card"><div class="label">Total Students</div><div class="value" id="statStudents">—</div></div>
+        <div class="stat-card"><div class="label">Total Classes</div><div class="value" id="statClasses">—</div></div>
+        <div class="stat-card success"><div class="label">Fees Received (All Time)</div><div class="value" id="statReceived">—</div></div>
+        <div class="stat-card danger"><div class="label">Defaulters (This Month)</div><div class="value" id="statDefaulters">—</div></div>
+      </div>
+
+      <h3 style="margin-bottom:14px;">Modules</h3>
+      <div class="module-grid">
+        <a href="new-student.html" class="module-card">
+          <div class="icon">1</div>
+          <h3>New Student</h3>
+          <p>Enroll a student and collect the one-time admission fee.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="edit-student.html" class="module-card">
+          <div class="icon">2</div>
+          <h3>Edit Student</h3>
+          <p>Search and update an existing student's information.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="fee-slip.html" class="module-card">
+          <div class="icon">3</div>
+          <h3>Fee Slip / Status</h3>
+          <p>Check paid / pending / remaining fee status for a student.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="pay-fee.html" class="module-card">
+          <div class="icon">4</div>
+          <h3>Pay Fee</h3>
+          <p>Receive monthly or annual fee, apply concessions, print slip.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="search-student.html" class="module-card">
+          <div class="icon">5</div>
+          <h3>Search Student</h3>
+          <p>Look up any student by number, name, or class.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="promotion.html" class="module-card">
+          <div class="icon">6</div>
+          <h3>Change Section / Promotion</h3>
+          <p>Promote to next class, change section, update fee structure.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="class-management.html" class="module-card">
+          <div class="icon">7</div>
+          <h3>Class Management</h3>
+          <p>Create classes, enroll students, view class-wise lists.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="result-management.html" class="module-card">
+          <div class="icon">8</div>
+          <h3>Result Management</h3>
+          <p>Enter subject-wise marks, calculate grade, generate result card.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="defaulter-list.html" class="module-card">
+          <div class="icon" style="background:var(--danger-bg);color:var(--danger);">!</div>
+          <h3>Defaulter List</h3>
+          <p>Students with unpaid fees for the current month.</p>
+          <span class="go">Open →</span>
+        </a>
+        <a href="backup.html" class="module-card">
+          <div class="icon" style="background:var(--gold-light);color:var(--gold);">⇩</div>
+          <h3>Database Backup</h3>
+          <p>Automatic weekly backup, plus manual "Backup Now" option.</p>
+          <span class="go">Open →</span>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { getAllStudents, getAllClasses, allFeePayments, getDefaulterList, formatCurrency } from './js/data.js';
+
+  renderShell({ title: 'Dashboard', breadcrumb: 'Central control panel for all modules' });
+  await requireAuth();
+
+  try {
+    const [students, classes, payments, defaulters] = await Promise.all([
+      getAllStudents(), getAllClasses(), allFeePayments(), getDefaulterList()
+    ]);
+    document.getElementById('statStudents').textContent = students.length;
+    document.getElementById('statClasses').textContent = classes.length;
+    document.getElementById('statReceived').textContent = formatCurrency(payments.reduce((s,p)=>s+(p.amount||0),0));
+    document.getElementById('statDefaulters').textContent = defaulters.length;
+  } catch (e) {
+    console.error(e);
+  }
+</script>
+</body>
+</html>

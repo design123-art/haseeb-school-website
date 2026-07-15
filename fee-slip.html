@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fee Slip / Status — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card">
+        <div class="card-head"><h3>Search Student</h3></div>
+        <div class="form-grid" style="grid-template-columns:1fr auto;">
+          <input type="text" id="searchInput" placeholder="Search by Student No, Name, or Class…" style="padding:12px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;">
+          <button class="btn btn-primary" id="searchBtn">Check Fee Status</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px;">
+          <table>
+            <thead><tr><th>Student No</th><th>Name</th><th>Class</th><th></th></tr></thead>
+            <tbody id="resultsBody"><tr class="empty-row"><td colspan="4">Search to check a student's fee status.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="statusArea" style="display:none;">
+        <div class="card">
+          <div class="card-head">
+            <h3 id="statusTitle">Fee Status</h3>
+            <span class="badge" id="statusBadge"></span>
+          </div>
+          <p style="margin-bottom:18px;">Detail A — click a card below to expand the underlying student list.</p>
+
+          <div class="fee-cards">
+            <div class="fee-click-card received" id="receivedCard">
+              <div class="label" style="font-size:12px;color:var(--success);font-weight:700;">Fees Received</div>
+              <div class="amt" id="receivedAmt">Rs 0</div>
+              <div class="hint">Click to view payment history ▾</div>
+            </div>
+            <div class="fee-click-card pending" id="pendingCard">
+              <div class="label" style="font-size:12px;color:var(--danger);font-weight:700;">Fees Pending</div>
+              <div class="amt" id="pendingAmt">Rs 0</div>
+              <div class="hint">Click to view what's due ▾</div>
+            </div>
+          </div>
+
+          <div id="receivedList" style="display:none;" class="table-wrap">
+            <table>
+              <thead><tr><th>Type</th><th>Period</th><th>Amount</th><th>Concession</th></tr></thead>
+              <tbody id="receivedBody"></tbody>
+            </table>
+          </div>
+          <div id="pendingList" style="display:none;margin-top:14px;">
+            <div class="card" style="background:var(--danger-bg);border:1px solid #F2C6C6;box-shadow:none;">
+              <p style="color:var(--danger);margin-bottom:6px;" id="pendingDetail"></p>
+              <a href="pay-fee.html" class="btn btn-danger btn-sm">Go to Pay Fee →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { searchStudents, feeStatusForStudent, formatCurrency, currentPeriod } from './js/data.js';
+
+  renderShell({ title: 'Fee Slip / Status', breadcrumb: 'Module 3 — Paid / pending / remaining fee status' });
+  await requireAuth();
+
+  const resultsBody = document.getElementById('resultsBody');
+  const statusArea = document.getElementById('statusArea');
+
+  async function runSearch(){
+    const term = document.getElementById('searchInput').value;
+    resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">Searching…</td></tr>';
+    const rows = await searchStudents(term);
+    if (rows.length === 0){
+      resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">No students found.</td></tr>';
+      return;
+    }
+    resultsBody.innerHTML = rows.map(s => `
+      <tr>
+        <td>${s.studentNo || '—'}</td><td>${s.name || '—'}</td><td>${s.className || '—'} ${s.section || ''}</td>
+        <td><button class="btn btn-outline btn-sm" data-view="${s.id}">View Status</button></td>
+      </tr>
+    `).join('');
+    resultsBody.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => showStatus(rows.find(r => r.id === btn.dataset.view)));
+    });
+  }
+
+  async function showStatus(student){
+    statusArea.style.display = 'block';
+    document.getElementById('statusTitle').textContent = `${student.name} — ${student.studentNo}`;
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = 'Loading…';
+    badge.className = 'badge badge-neutral';
+
+    const status = await feeStatusForStudent(student);
+    badge.textContent = status.isDefaulter ? 'Pending' : 'Paid';
+    badge.className = 'badge ' + (status.isDefaulter ? 'badge-danger' : 'badge-success');
+
+    document.getElementById('receivedAmt').textContent = formatCurrency(status.totalReceived);
+    document.getElementById('pendingAmt').textContent = formatCurrency(status.pendingAmount);
+
+    document.getElementById('receivedBody').innerHTML = status.payments.length
+      ? status.payments.map(p => `
+          <tr><td>${p.type}</td><td>${p.period || '—'}</td><td>${formatCurrency(p.amount)}</td><td>${formatCurrency(p.concession)}</td></tr>
+        `).join('')
+      : `<tr class="empty-row"><td colspan="4">No payments recorded yet.</td></tr>`;
+
+    const parts = [];
+    if (!status.admissionPaid && student.admissionFee) parts.push(`Admission fee of ${formatCurrency(student.admissionFee)} unpaid`);
+    if (!status.monthlyPaidThisPeriod && student.monthlyFee) parts.push(`Monthly fee for ${currentPeriod()} (${formatCurrency(student.monthlyFee)}) unpaid`);
+    document.getElementById('pendingDetail').textContent = parts.length ? parts.join(' · ') : 'Nothing pending.';
+
+    document.getElementById('receivedList').style.display = 'none';
+    document.getElementById('pendingList').style.display = 'none';
+    statusArea.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  document.getElementById('receivedCard').addEventListener('click', () => {
+    const el = document.getElementById('receivedList');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('pendingCard').addEventListener('click', () => {
+    const el = document.getElementById('pendingList');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.getElementById('searchBtn').addEventListener('click', runSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+  runSearch();
+</script>
+</body>
+</html>

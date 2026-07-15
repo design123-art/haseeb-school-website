@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haseeb School — Management System</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ SPLASH: 3D Rotating Logo ============ -->
+<div class="splash" id="splash">
+  <div class="splash-stage">
+    <div class="splash-seal" id="splashSeal">
+      <div class="seal-face">
+        <span class="initials">HS</span>
+        <span class="sub">Haseeb School</span>
+      </div>
+      <div class="seal-face back">
+        <span class="initials">HS</span>
+        <span class="sub">Haseeb School</span>
+      </div>
+    </div>
+  </div>
+  <h1>Haseeb School</h1>
+  <p>Management System</p>
+  <div class="splash-hint"><span class="dot"></span> Tap the logo to sign in</div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-badge">HS</div>
+    <h1 style="font-size:20px;">Admin Login</h1>
+    <p style="margin-bottom:20px;">Sign in to manage Haseeb School</p>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label for="email">Username / Email</label>
+        <input type="email" id="email" placeholder="admin@haseebschool.edu.pk" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Login</button>
+    </form>
+    <p style="margin-top:18px;font-size:11.5px;color:var(--ink-muted);">
+      Only one active session is allowed at a time. Idle sessions auto-lock after 1 minute.
+    </p>
+  </div>
+</div>
+
+<script type="module">
+  import {
+    auth, signInWithEmailAndPassword, onAuthStateChanged,
+    doc, setDoc, db, serverTimestamp
+  } from './js/firebase-config.js';
+
+  const splash = document.getElementById('splash');
+  const seal = document.getElementById('splashSeal');
+  const loginScreen = document.getElementById('loginScreen');
+  const errorBox = document.getElementById('errorBox');
+  const loginForm = document.getElementById('loginForm');
+  const loginBtn = document.getElementById('loginBtn');
+
+  const params = new URLSearchParams(window.location.search);
+  const IDLE_LIMIT_MS = 60 * 1000;
+
+  function showLoginNotice(){
+    if (params.get('locked')){
+      errorBox.textContent = 'Your session was locked after 1 minute of inactivity. Please sign in again.';
+      errorBox.classList.add('show');
+    } else if (params.get('kicked')){
+      errorBox.textContent = 'You were signed out because this account logged in from another device or tab.';
+      errorBox.classList.add('show');
+    }
+  }
+
+  function revealLogin(){
+    splash.classList.add('hide');
+    seal.classList.add('paused');
+    loginScreen.classList.add('show');
+    showLoginNotice();
+  }
+
+  document.querySelector('.splash-stage').addEventListener('click', revealLogin);
+
+  // If already authenticated within the idle window, skip straight to
+  // the dashboard (flowchart: "Resume Dashboard Directly").
+  onAuthStateChanged(auth, (user) => {
+    const lastActivity = Number(sessionStorage.getItem('hs_last_activity') || 0);
+    const withinWindow = lastActivity && (Date.now() - lastActivity) < IDLE_LIMIT_MS;
+    if (user && withinWindow && !params.get('locked') && !params.get('kicked')){
+      window.location.href = 'dashboard.html';
+    } else if (user) {
+      // stale session — force back through login
+      revealLogin();
+    }
+  });
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.classList.remove('show');
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing in…';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      sessionStorage.setItem('hs_last_activity', Date.now().toString());
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      errorBox.textContent = 'Invalid username or password.';
+      errorBox.classList.add('show');
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Login';
+    }
+  });
+</script>
+</body>
+</html>

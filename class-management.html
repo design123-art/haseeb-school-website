@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Class Management — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card">
+        <div class="card-head"><h3>Create Class</h3></div>
+        <p>e.g. Class 1–10, with Section.</p>
+        <form id="classForm">
+          <div class="form-grid">
+            <div class="field"><label>Class Name</label><input type="text" id="className" placeholder="e.g. Class 6" required></div>
+            <div class="field"><label>Section</label><input type="text" id="section" placeholder="e.g. A"></div>
+            <div class="field"><label>Monthly Fee</label><input type="number" id="monthlyFee" min="0" required></div>
+            <div class="field"><label>Annual Fee</label><input type="number" id="annualFee" min="0" required></div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="saveBtn">Save Class Data to Database</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>View Class-wise Student List</h3>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr;margin-bottom:14px;">
+          <select id="classFilter"><option value="">All classes — select one to filter…</option></select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Class</th><th>Student No</th><th>Name</th><th>Father</th><th>B-Form</th></tr></thead>
+            <tbody id="classListBody"><tr class="empty-row"><td colspan="5">Select a class to view its students.</td></tr></tbody>
+          </table>
+        </div>
+        <p style="margin-top:14px;">
+          Need to enroll a new student into a class?
+          <a href="new-student.html">Go to New Student →</a>
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>All Classes</h3></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Class</th><th>Section</th><th>Monthly Fee</th><th>Annual Fee</th></tr></thead>
+            <tbody id="classesBody"><tr class="empty-row"><td colspan="4">No classes yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, showToast } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { addClass, getAllClasses, studentsInClass, formatCurrency } from './js/data.js';
+
+  renderShell({ title: 'Class Management', breadcrumb: 'Module 7 — Create classes, enroll students, view class lists' });
+  await requireAuth();
+
+  const classFilter = document.getElementById('classFilter');
+  const classesBody = document.getElementById('classesBody');
+  const classListBody = document.getElementById('classListBody');
+
+  async function loadClasses(){
+    const classes = await getAllClasses();
+    classFilter.innerHTML = '<option value="">All classes — select one to filter…</option>' +
+      classes.map(c => `<option value="${c.id}">${c.className}${c.section ? ' - ' + c.section : ''}</option>`).join('');
+
+    classesBody.innerHTML = classes.length
+      ? classes.map(c => `
+          <tr><td>${c.className}</td><td>${c.section || '—'}</td><td>${formatCurrency(c.monthlyFee)}</td><td>${formatCurrency(c.annualFee)}</td></tr>
+        `).join('')
+      : '<tr class="empty-row"><td colspan="4">No classes yet — create one above.</td></tr>';
+    return classes;
+  }
+
+  let classes = await loadClasses();
+
+  classFilter.addEventListener('change', async () => {
+    if (!classFilter.value){
+      classListBody.innerHTML = '<tr class="empty-row"><td colspan="5">Select a class to view its students.</td></tr>';
+      return;
+    }
+    classListBody.innerHTML = '<tr class="empty-row"><td colspan="5">Loading…</td></tr>';
+    const students = await studentsInClass(classFilter.value);
+    classListBody.innerHTML = students.length
+      ? students.map(s => `
+          <tr><td>${s.className || ''} ${s.section || ''}</td><td>${s.studentNo || ''}</td><td>${s.name || ''}</td><td>${s.father || ''}</td><td>${s.bForm || '—'}</td></tr>
+        `).join('')
+      : '<tr class="empty-row"><td colspan="5">No students enrolled in this class yet.</td></tr>';
+  });
+
+  document.getElementById('classForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      await addClass({
+        className: document.getElementById('className').value.trim(),
+        section: document.getElementById('section').value.trim(),
+        monthlyFee: Number(document.getElementById('monthlyFee').value || 0),
+        annualFee: Number(document.getElementById('annualFee').value || 0)
+      });
+      showToast('Class saved to database.', 'success');
+      document.getElementById('classForm').reset();
+      classes = await loadClasses();
+    } catch(err){
+      console.error(err);
+      showToast('Could not save class. ' + err.message, 'error');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = 'Save Class Data to Database';
+    }
+  });
+</script>
+</body>
+</html>

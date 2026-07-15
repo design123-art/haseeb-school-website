@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Search Student — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card">
+        <div class="card-head"><h3>Search Student</h3></div>
+        <div class="form-grid" style="grid-template-columns:1fr auto;">
+          <input type="text" id="searchInput" placeholder="Search by Student No, Name, or Class…" style="padding:12px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;">
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px;">
+          <table>
+            <thead><tr><th>Student No</th><th>Name</th><th>Class</th><th></th></tr></thead>
+            <tbody id="resultsBody"><tr class="empty-row"><td colspan="4">Search to find a student.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="detailCard" style="display:none;">
+        <div class="card-head"><h3 id="detailTitle">Display Details &amp; Status</h3></div>
+        <div class="form-grid" id="detailGrid"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { searchStudents, feeStatusForStudent, formatCurrency } from './js/data.js';
+
+  renderShell({ title: 'Search Student', breadcrumb: 'Module 5 — Look up any student by number, name, or class' });
+  await requireAuth();
+
+  const resultsBody = document.getElementById('resultsBody');
+  const detailCard = document.getElementById('detailCard');
+  const detailGrid = document.getElementById('detailGrid');
+
+  function row(label, value){
+    return `<div class="field"><label>${label}</label><div style="padding:11px 14px;background:var(--surface-muted);border-radius:8px;border:1.5px solid var(--border);font-size:14px;">${value || '—'}</div></div>`;
+  }
+
+  async function runSearch(){
+    const term = document.getElementById('searchInput').value;
+    resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">Searching…</td></tr>';
+    const rows = await searchStudents(term);
+    if (rows.length === 0){
+      resultsBody.innerHTML = '<tr class="empty-row"><td colspan="4">No students found.</td></tr>';
+      return;
+    }
+    resultsBody.innerHTML = rows.map(s => `
+      <tr>
+        <td>${s.studentNo || '—'}</td><td>${s.name || '—'}</td><td>${s.className || '—'} ${s.section || ''}</td>
+        <td><button class="btn btn-outline btn-sm" data-view="${s.id}">View</button></td>
+      </tr>
+    `).join('');
+    resultsBody.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => showDetail(rows.find(r => r.id === btn.dataset.view)));
+    });
+  }
+
+  async function showDetail(s){
+    detailCard.style.display = 'block';
+    document.getElementById('detailTitle').textContent = `${s.name} — Details & Status`;
+    const status = await feeStatusForStudent(s);
+    detailGrid.innerHTML = [
+      row('Student No', s.studentNo),
+      row('Name', s.name),
+      row("Father's Name", s.father),
+      row('B-Form / CNIC', s.bForm),
+      row('Phone', s.phone),
+      row('Emergency Contact', s.emergencyPhone),
+      row('Address', s.address),
+      row('School', s.school),
+      row('Class', `${s.className || ''} ${s.section || ''}`),
+      row('Fee Status', status.isDefaulter
+        ? `<span class="badge badge-danger">Pending — ${formatCurrency(status.pendingAmount)}</span>`
+        : `<span class="badge badge-success">Paid</span>`)
+    ].join('');
+    detailCard.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', runSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+  runSearch();
+</script>
+</body>
+</html>

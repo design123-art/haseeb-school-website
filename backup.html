@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Backup — Haseeb School</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page">
+
+      <div class="card" style="background:var(--success-bg);border:1px solid #BFE3C4;box-shadow:none;">
+        <div class="card-head"><h3 style="color:var(--success);">Automatic Weekly Backup</h3></div>
+        <p style="color:#1F6B2C;">Every 7 days, the system automatically generates and downloads a full database backup file (students, classes, fee payments, results) the next time an admin opens this page.</p>
+        <p style="color:#1F6B2C;margin:0;">Last automatic backup: <strong id="lastBackupText">—</strong></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Manual Backup Now</h3></div>
+        <p>Admin can download a full backup anytime, independent of the weekly schedule.</p>
+        <button class="btn btn-gold" id="backupBtn">⇩ Backup Now</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Backup Contents</h3></div>
+        <div class="stat-row">
+          <div class="stat-card"><div class="label">Students</div><div class="value" id="cStudents">—</div></div>
+          <div class="stat-card"><div class="label">Classes</div><div class="value" id="cClasses">—</div></div>
+          <div class="stat-card"><div class="label">Fee Payments</div><div class="value" id="cPayments">—</div></div>
+          <div class="stat-card"><div class="label">Results</div><div class="value" id="cResults">—</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, showToast } from './js/auth-guard.js';
+  import { renderShell } from './js/shell.js';
+  import { exportFullDatabase, downloadJSON } from './js/data.js';
+  import { db, doc, getDoc, setDoc, serverTimestamp } from './js/firebase-config.js';
+
+  renderShell({ title: 'Database Backup', breadcrumb: 'Automatic weekly + manual backup' });
+  await requireAuth();
+
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const metaRef = doc(db, 'system', 'backupMeta');
+
+  async function runBackup(auto = false){
+    const data = await exportFullDatabase();
+    document.getElementById('cStudents').textContent = data.students.length;
+    document.getElementById('cClasses').textContent = data.classes.length;
+    document.getElementById('cPayments').textContent = data.feePayments.length;
+    document.getElementById('cResults').textContent = data.results.length;
+
+    const filename = `haseeb-school-backup-${new Date().toISOString().slice(0,10)}.json`;
+    downloadJSON(data, filename);
+    await setDoc(metaRef, { lastBackupAt: serverTimestamp() }, { merge: true });
+    showToast(auto ? 'Weekly backup downloaded automatically.' : 'Backup downloaded.', 'success');
+    await refreshLastBackupText();
+  }
+
+  async function refreshLastBackupText(){
+    try {
+      const snap = await getDoc(metaRef);
+      if (snap.exists() && snap.data().lastBackupAt){
+        const d = snap.data().lastBackupAt.toDate();
+        document.getElementById('lastBackupText').textContent = d.toLocaleString();
+        return d;
+      }
+    } catch(e){ console.error(e); }
+    document.getElementById('lastBackupText').textContent = 'Never';
+    return null;
+  }
+
+  document.getElementById('backupBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('backupBtn');
+    btn.disabled = true; btn.textContent = 'Preparing backup…';
+    try { await runBackup(false); }
+    catch(e){ console.error(e); showToast('Backup failed. ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '⇩ Backup Now'; }
+  });
+
+  // Populate stats + check whether a weekly auto-backup is due.
+  try {
+    const data = await exportFullDatabase();
+    document.getElementById('cStudents').textContent = data.students.length;
+    document.getElementById('cClasses').textContent = data.classes.length;
+    document.getElementById('cPayments').textContent = data.feePayments.length;
+    document.getElementById('cResults').textContent = data.results.length;
+  } catch(e){ console.error(e); }
+
+  const lastDate = await refreshLastBackupText();
+  if (!lastDate || (Date.now() - lastDate.getTime()) > WEEK_MS){
+    // Due for weekly backup — trigger it automatically.
+    runBackup(true).catch(e => console.error(e));
+  }
+</script>
+</body>
+</html>
